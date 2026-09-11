@@ -212,6 +212,7 @@ end
 function text_metrics.new(args)
   local dp = args.dp
   local scale_font = args.scale_font
+  local translate = args.translate or function(value) return value end
   local use_kerning = args.kerning == true
   local default_size = args.default_size or 24
   local cache, cache_size = {}, 0
@@ -252,13 +253,14 @@ function text_metrics.new(args)
   end
 
   function metrics.length(text)
+    text = translate(text)
     local count = 0
     for _ in tostring(text or ""):gmatch(UTF8_CHARACTER) do count = count + 1 end
     return count
   end
 
   function metrics.truncate(text, maximum)
-    text, maximum = tostring(text or ""), math.floor(tonumber(maximum) or 0)
+    text, maximum = translate(text), math.floor(tonumber(maximum) or 0)
     if maximum <= 0 then return "" end
     if metrics.length(text) <= maximum then return text end
 
@@ -273,12 +275,12 @@ function text_metrics.new(args)
   end
 
   function metrics.width(text, size)
-    text = tostring(text or "")
+    text = translate(text)
     return measured_units(text) / FONT_HEIGHT * rendered_size(size)
   end
 
   function metrics.truncate_to_width(text, maximum_width, size)
-    text = tostring(text or "")
+    text = translate(text)
     maximum_width = tonumber(maximum_width) or 0
     if metrics.width(text, size) <= maximum_width then return text end
 

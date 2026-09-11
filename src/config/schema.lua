@@ -18,6 +18,13 @@ local function enum(default, values)
   end
 end
 
+local function language(value)
+  value = tostring(value or "zh-CN"):lower()
+  if value == "en" or value == "english" then return "en" end
+  if value == "auto" then return "auto" end
+  return "zh-CN"
+end
+
 local function csv(pattern)
   return function(value)
     local entries, seen = {}, {}
@@ -34,6 +41,8 @@ end
 
 local definitions = {
   {name = "dpi_scale", default = "auto", group = "appearance"},
+  {name = "language", default = "zh-CN", group = "appearance",
+    normalize = language},
   {name = "accent_color", default = "#00bbff", group = "appearance"},
   {name = "context_menu", default = true, group = "appearance"},
   {name = "tooltip", default = true, group = "appearance"},

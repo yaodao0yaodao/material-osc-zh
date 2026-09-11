@@ -10,6 +10,7 @@ package.path = utils.join_path(script_dir, "../?.lua") .. ";" ..
   utils.join_path(script_dir, "?.lua") .. ";" .. package.path
 
 local config_schema = require "src.config.schema"
+local i18n_module = require "src.i18n"
 local opts = config_schema.defaults()
 local option_defaults = config_schema.defaults()
 local options_update_handler
@@ -21,6 +22,8 @@ options.read_options(opts, "material-osc", function(changed)
   if options_update_handler then options_update_handler(changed) end
 end)
 normalize_option_values(opts)
+local i18n = i18n_module.new({language = function() return opts.language end})
+local translate = function(value) return i18n:translate(value) end
 
 local configured_hwdec = mp.get_property("hwdec", "no") or "no"
 local configured_video_sync =
@@ -105,7 +108,9 @@ local filesystem = filesystem_module.new({
   mp = mp, utils = utils, process = process, runtime = platform_runtime
 })
 local http = http_module.new({process = process, runtime = platform_runtime})
-local dialogs = dialogs_module.new({process = process, runtime = platform_runtime})
+local dialogs = dialogs_module.new({
+  process = process, runtime = platform_runtime, translate = translate
+})
 local persistence = persistence_module.new({filesystem = filesystem, utils = utils})
 local timers = timers_module.new({mp = mp})
 local media_title = media_title_module.new({
@@ -596,7 +601,9 @@ local enqueue_effect = function(...) return effects:enqueue(...) end
 
 local lerp = animation.lerp
 local smooth_step = animation.smooth_step
-local ui_renderer = ui_renderer_module.new({runtime = runtime, opts = opts})
+local ui_renderer = ui_renderer_module.new({
+  runtime = runtime, opts = opts, translate = translate
+})
 local clamp = function(value, minimum, maximum)
   return ui_renderer:clamp(value, minimum, maximum)
 end
@@ -606,6 +613,7 @@ local edge_seek_top_inset = function() return dp(64) end
 local text_metrics = text_metrics_module.new({
   dp = dp,
   scale_font = function(value) return ui_renderer:scale_font(value) end,
+  translate = translate,
   default_size = 24
 })
 local truncate_utf8 = text_metrics.truncate
@@ -716,6 +724,7 @@ menu_keyboard = menu_keyboard_module.new({
 
 local toast_service = toast_service_module.new({
   mp = mp,
+  translate = translate,
   render = function()
     if render then render(false, "interaction") end
   end
@@ -878,6 +887,7 @@ local keybinding_hints = keybinding_hints_module.new({
 })
 local tooltip_service = tooltip_service_module.new({
   runtime = runtime, dp = dp, clamp = clamp,
+  translate = translate,
   enabled = function() return opts.tooltip end,
   delay = 0.65,
   text_width = text_intrinsic_width,

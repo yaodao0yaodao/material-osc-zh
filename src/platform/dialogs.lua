@@ -36,6 +36,7 @@ end
 
 function dialogs.new(args)
   local process, runtime = args.process, args.runtime
+  local translate = args.translate or function(value) return value end
   local service = {}
 
   local function handle_result(callback, fallback)
@@ -82,7 +83,7 @@ function dialogs.new(args)
 
   function service:pick_files(options, callback)
     options = options or {}
-    local title = tostring(options.title or "Choose files")
+    local title = translate(options.title or "Choose files")
     local multiple = options.multiple ~= false
     local windows_filter, unix_filters, extensions =
       filter_values(options.filters)
@@ -151,8 +152,8 @@ function dialogs.new(args)
 
   function service:prompt_text(options, callback)
     options = options or {}
-    local title = tostring(options.title or "Input")
-    local message = tostring(options.message or "")
+    local title = translate(options.title or "Input")
+    local message = translate(options.message or "")
     local fallback_default = tostring(options.default or "")
 
     local function show(default)

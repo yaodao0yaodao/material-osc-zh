@@ -2,6 +2,7 @@ local renderer = {}
 
 function renderer.new(args)
   local runtime, opts = args.runtime, args.opts
+  local translate = args.translate or function(value) return value end
   local color_cache = {}
   local escaped_text_cache, escaped_text_cache_size = {}, 0
   local frame_alpha_cache, frame_fade_cache = {}, {}
@@ -222,6 +223,7 @@ function renderer.new(args)
 
   function service:draw_text(ass, x, y, value, size, color, alpha, font, alignment,
       bold, ignore_controller_fade, clip_bounds, style)
+    value = translate(value)
     ass:new_event(); ass:pos(x, y); ass:an(alignment or 5)
     local rendered_alpha = ignore_controller_fade and (alpha or "00") or
       self:fade_alpha(alpha)
@@ -245,6 +247,7 @@ function renderer.new(args)
   end
 
   function service:draw_shadowed_text(ass, x, y, value, size, color, alpha, font, alignment)
+    value = translate(value)
     local text_size = self:scale_font(size or 22)
     local text_font = font or self.default_text_font
     local escaped_value = escape_ass(value)

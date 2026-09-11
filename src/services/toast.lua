@@ -9,6 +9,7 @@ local DEFAULT_ICONS = {
 
 function toast.new(args)
   local mp = args.mp
+  local translate = args.translate or function(value) return value end
   local service = {
     presenter = nil,
     pending = nil
@@ -41,7 +42,7 @@ function toast.new(args)
     options = options or {}
     local kind = options.kind or "info"
     present({
-      message = tostring(message or ""),
+      message = translate(message),
       icon = options.icon or DEFAULT_ICONS[kind] or DEFAULT_ICONS.info,
       duration = math.max(0, tonumber(options.duration) or 1.4),
       show_on_empty = options.show_on_empty == true,

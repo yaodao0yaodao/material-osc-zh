@@ -2,6 +2,7 @@ local tooltip_service = {}
 
 function tooltip_service.new(args)
   local state = args.runtime.tooltip
+  local translate = args.translate or function(value) return value end
   local delay = args.delay or 0.65
   local fade_duration = args.fade_duration or 0.14
 
@@ -23,6 +24,7 @@ function tooltip_service.new(args)
   function service:request(text, bounds, allow_when_suppressed, shortcut,
       shortcut_before)
     if not args.enabled() or not text then return end
+    text = translate(text)
     state.requested = true
     state.allow_when_suppressed = allow_when_suppressed == true
     local hint_keys = {}
