@@ -11,6 +11,11 @@ directory playlists and much more.
 
 I would say, you should fuck around and find out!
 
+For the Simplified Chinese fork and its complete Linux/Caelestia integration,
+see [README.zh-CN.md](README.zh-CN.md). The bundled installer adds the official
+autocrop script, thumbfast, Vulkan/NVDEC/HDR defaults, single-window launching,
+and optional Caelestia/MPRIS integration.
+
 ## Showcase
 
 https://github.com/user-attachments/assets/65046da7-7d9e-4492-9e93-47650b8fc484
@@ -67,10 +72,9 @@ height, with width calculated from the video's aspect ratio; see
 
 The left and right halves of the video window have dedicated wheel actions: the
 left half adjusts the monitor backlight through Caelestia, while the right half
-adjusts the system output volume by 2% per wheel step and shows the logical
-system-volume target through the material-osc indicator. On the configured Jieli
-USB speaker, the logical 0–100% range is mapped to its usable 34–100% hardware
-range. Up/Down keys adjust mpv's independent player volume by 5% and always
+adjusts the generic PipeWire system output volume by 2% per wheel step and shows
+the target through the material-osc indicator. No device-specific volume mapping
+is applied. Up/Down keys adjust mpv's independent player volume by 5% and always
 show feedback, including when the value is already at 0% or 100%. Seek dragging likewise
 uses material-osc's progress bar/time pill without the native OSD. The last
 keyboard seek also reveals the bottom controller. The last brightness selected

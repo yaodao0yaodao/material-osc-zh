@@ -4,7 +4,20 @@
 控件、设置页、上下文菜单、工具提示、通知和系统文件对话框加入简体中文外，
 还整合了系统音量与亮度控制、自动裁剪、字幕偏好及逐视频状态记忆等功能。
 
-## 使用
+## 一键安装（Linux / Caelestia）
+
+仓库现在包含完整的播放器集成配置：单窗口播放、拖入替换、NVIDIA 全格式硬解、
+`gpu-next` + Vulkan + HDR、默认适应屏幕、中文字幕优先级、上下键播放器音量、
+官方自动裁剪脚本、thumbfast 缩略图、MPRIS，以及 Caelestia/Hyprland 配置片段。
+
+```bash
+./install-linux.sh --with-caelestia --install-mpris
+```
+
+安装器会备份被替换的文件；不需要 Caelestia 或 MPRIS 时可省略对应参数。完整说明
+见 [`extras/README.zh-CN.md`](extras/README.zh-CN.md)。
+
+## 手动安装
 
 构建产物位于 `build/0.0.15-zh-cn/`。将其中的 `scripts/material-osc.lua` 和
 `fonts/` 复制到 mpv 配置目录，并与 `thumbfast.lua` 放在同一个 `scripts/` 目录。
@@ -19,11 +32,11 @@ language=zh-CN
 原文更适合识别内容。若遇到未覆盖的新文案，会安全地显示英文原文。
 
 视频窗口左半边滚轮调用 Caelestia 调节显示器背光，右半边滚轮以 2% 步进调节
-系统输出音量，并使用 material-osc 自己的 OSD 显示逻辑目标值。配置的 Jieli USB
-音响会把逻辑 0–100% 映射到实际可用的 34–100% 硬件范围。上/下方向键以 5% 步进调节
+系统输出音量，并使用 material-osc 自己的 OSD 显示目标值。系统音量使用通用
+PipeWire 0–100% 范围，不包含硬件专用映射。上/下方向键以 5% 步进调节
 mpv 独立的播放器音量，即使已经到 0% 或 100% 也会显示反馈。进度条拖动也
 使用 material-osc 的进度条和时间提示，不显示 mpv 原生 OSD；键盘 seek 时也会
-自动显示底部控件。键盘上方向键后退、下方向键前进。通过 mpv 调整的最后一个背光值会保存在
+自动显示底部控件。通过 mpv 调整的最后一个背光值会保存在
 `script-opts/material-osc-brightness`，下次启动 mpv 自动恢复；mpv 退出时恢复
 启动前的系统背光值。
 

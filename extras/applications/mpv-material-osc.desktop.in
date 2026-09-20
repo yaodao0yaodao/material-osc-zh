@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=mpv (material-osc 中文版)
+GenericName=Multimedia player
+GenericName[zh_CN]=多媒体播放器
+Comment=Play media in the existing material-osc mpv window
+Comment[zh_CN]=在现有 material-osc mpv 窗口中播放媒体
+Icon=mpv
+TryExec=mpv
+Exec=@MPV_SINGLE_INSTANCE@ --player-operation-mode=pseudo-gui -- %U
+Terminal=false
+Categories=AudioVideo;Audio;Video;Player;TV;
+MimeType=audio/*;video/*;application/ogg;application/x-ogg;application/x-matroska;application/x-mpegurl;
+StartupWMClass=mpv

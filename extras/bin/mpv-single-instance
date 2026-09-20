@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+
+set -u
+
+runtime_dir="${XDG_RUNTIME_DIR:-${XDG_CACHE_HOME:-${HOME}/.cache}/mpv}"
+mkdir -p "$runtime_dir"
+socket_path="${MPV_SINGLE_INSTANCE_SOCKET:-${runtime_dir}/material-osc-mpv.sock}"
+
+# Reuse a running mpv only when the socket really speaks mpv JSON IPC. The
+# first dropped/opened file replaces the current item; additional files append.
+if [[ -S "$socket_path" ]]; then
+    if python3 - "$socket_path" "$@" <<'PY'
+import json
+import socket
+import sys
+
+socket_path = sys.argv[1]
+args = sys.argv[2:]
+try:
+    separator = args.index("--")
+    media = args[separator + 1:]
+except ValueError:
+    media = [arg for arg in args if not arg.startswith("-")]
+
+try:
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    client.settimeout(0.75)
+    client.connect(socket_path)
+    client.sendall((json.dumps({
+        "command": ["get_property", "mpv-version"],
+        "request_id": "material-osc-single-instance-probe",
+    }, separators=(",", ":")) + "\n").encode())
+
+    buffer = b""
+    verified = False
+    while len(buffer) < 65536:
+        chunk = client.recv(4096)
+        if not chunk:
+            break
+        buffer += chunk
+        while b"\n" in buffer:
+            line, buffer = buffer.split(b"\n", 1)
+            try:
+                response = json.loads(line)
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                continue
+            if response.get("request_id") == "material-osc-single-instance-probe":
+                verified = response.get("error") == "success"
+                break
+        if verified:
+            break
+    if not verified:
+        raise OSError("socket peer is not mpv")
+
+    if media:
+        for index, target in enumerate(media):
+            command = ["loadfile", target, "replace" if index == 0 else "append"]
+            client.sendall((json.dumps({"command": command}, ensure_ascii=False) + "\n").encode())
+    else:
+        client.sendall((json.dumps({
+            "command": ["show-text", "mpv 已在运行", 1200]
+        }, ensure_ascii=False) + "\n").encode())
+    client.close()
+except OSError:
+    raise SystemExit(1)
+PY
+    then
+        exit 0
+    fi
+fi
+
+exec mpv --input-ipc-server="$socket_path" "$@"
