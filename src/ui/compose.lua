@@ -322,6 +322,8 @@ function compose.new(deps)
       shortcut_before = args.shortcut_before,
       size = args.size or icon_text_size,
       icon_size = args.icon_size or args.size or icon_text_size,
+      display_text = args.display_text,
+      display_text_size = args.display_text_size or 18,
       alpha = args.alpha,
       render_pass = args.render_pass,
       ignore_controller_fade = args.ignore_controller_fade == true,
@@ -351,6 +353,7 @@ function compose.new(deps)
 
     function node:update(props)
       if props.icon ~= nil then self.icon = props.icon end
+      if props.display_text ~= nil then self.display_text = props.display_text end
       if props.transition_icon ~= nil or props.clear_transition_icon then
         self.transition_icon = props.transition_icon
       end
@@ -368,7 +371,12 @@ function compose.new(deps)
 
     function node:measure(parent)
       local size = dp(self.size)
-      return apply_modifier_size(self.modifier, {w = size, h = size}, parent)
+      local width = size
+      if self.display_text and self.display_text ~= "" then
+        width = math.max(width,
+          text_intrinsic_width(self.display_text, self.display_text_size))
+      end
+      return apply_modifier_size(self.modifier, {w = width, h = size}, parent)
     end
 
     function node:draw(ass, bounds)
@@ -388,7 +396,11 @@ function compose.new(deps)
         end
         local center_x, center_y =
           bounds.x + bounds.w / 2, bounds.y + bounds.h / 2
-        if self.transition_icon then
+        if self.display_text and self.display_text ~= "" then
+          draw_text(ass, center_x, center_y, self.display_text,
+            self.display_text_size, icon_color, icon_alpha,
+            default_text_font, 5, nil, self.ignore_controller_fade)
+        elseif self.transition_icon then
           local progress = math.max(0, math.min(1, self.transition_progress or 0))
           local opacity = 1 - (tonumber(icon_alpha or "00", 16) or 0) / 255
           local function faded_alpha(fraction)

@@ -13,6 +13,7 @@ popups.normalize_aspect_override = normalize_aspect_override
 function popups.new(services)
   local state, ui = services.state, services.ui
   local player, navigation = services.player, services.navigation
+  local autocrop = services.autocrop
   local temporary_speed = services.temporary_speed
   local pointer, input, viewport = state.pointer, state.input, state.viewport
   local chapter_state, subtitle_state = state.chapter, state.subtitle
@@ -20,6 +21,8 @@ function popups.new(services)
   local opts, msg = services.config.opts, services.platform.msg
   local filesystem = services.platform.filesystem
   local process = services.platform.process
+  local dialogs = services.dialogs
+  local subtitle_selector = services.subtitle_selector
   local timers = services.timers
   local dp, clamp, smooth_step = ui.dp, ui.clamp, ui.smooth_step
   local ass_alpha_for_opacity = ui.alpha
@@ -47,6 +50,7 @@ function popups.new(services)
   local set_subtitle_dialog_open = navigation.set_subtitle_open
   local set_audio_dialog_open = navigation.set_audio_open
   local set_settings_dialog_open = navigation.set_settings_open
+  local toggle_subtitles = navigation.toggle_subtitles
 
   local function update_fields(target, props)
     for key, value in pairs(props) do target[key] = value end
@@ -201,8 +205,9 @@ function popups.new(services)
         draw_box(ass, bounds.x, bounds.y, bounds.x2, bounds.y2,
              bounds.h / 2, "#FFFFFF", self.hover_alpha)
       end
+      local icon = type(self.icon) == "function" and self.icon() or self.icon
       draw_icon(ass, bounds.x + bounds.w / 2, bounds.y + bounds.h / 2,
-           self.icon, "#FFFFFF", 24, self.alpha)
+           icon, "#FFFFFF", 24, self.alpha)
       local tooltip = type(self.tooltip) == "function" and
         self.tooltip() or self.tooltip
       local visible = (tonumber(self.alpha or "FF", 16) or 255) < 250
@@ -316,7 +321,8 @@ function popups.new(services)
     Modifier = Modifier, Rect = Rect, apply_modifier_size = apply_modifier_size,
     draw_node = draw_node, mouse_in = mouse_in, ChapterHeader = ChapterHeader,
     VerticalScrollbar = VerticalScrollbar, update_fields = update_fields,
-    subtitle_state = subtitle_state, audio_state = audio_state
+    subtitle_state = subtitle_state, audio_state = audio_state,
+    subtitle_selector = subtitle_selector
   })
   local TrackPopup = track_popups.TrackPopup
   local SubtitlePopup, AudioPopup = track_popups.SubtitlePopup, track_popups.AudioPopup
@@ -819,7 +825,7 @@ end
   local function crop_label(value, keepaspect, panscan)
     local selected
     if keepaspect == false then selected = "stretch"
-    elseif (tonumber(panscan) or 0) > 0.99 and tostring(value or "") == "" then
+    elseif (tonumber(panscan) or 0) > 0.99 then
       selected = "fit"
     else selected = crop_preset_value(value) end
     for _, preset in ipairs(crop_presets) do
@@ -832,21 +838,19 @@ end
   local function apply_crop_preset(item)
     mp.set_property("video-aspect-override", "no")
     if item.mode == "stretch" then
+      autocrop:set_fit(false)
       mp.set_property("video-crop", "")
       mp.set_property_native("keepaspect", false)
       mp.set_property_number("panscan", 0)
       return
     elseif item.mode == "fit" then
-      mp.set_property("video-crop", "")
-      mp.set_property_native("keepaspect", true)
-      mp.set_property_number("panscan", 1)
+      autocrop:set_fit(true)
       return
     elseif not item.ratio then
-      mp.set_property("video-crop", "")
-      mp.set_property_native("keepaspect", true)
-      mp.set_property_number("panscan", 0)
+      autocrop:set_fit(false)
       return
     end
+    autocrop:set_fit(false)
     mp.set_property_native("keepaspect", true)
     mp.set_property_number("panscan", 0)
     local params = mp.get_property_native("video-dec-params") or {}
@@ -1189,7 +1193,7 @@ end
 
   local function SettingsPopup(on_close)
     local node = {
-      width = dp(480), height = dp(260), interactive = false,
+      width = dp(480), height = dp(308), interactive = false,
       modifier = Modifier():clickable({
         name = "settings-dialog-panel", enabled = false, on_click = function() end
       })
@@ -1199,12 +1203,21 @@ end
       function() set_settings_page("video") end)
     node.audio_row = SettingsActionRow("settings-audio-row", "record_voice_over",
       function() set_settings_page("audio") end)
-    node.subtitle_row = SettingsActionRow("settings-subtitle-row", "subtitles",
-      function() set_settings_page("subtitles") end)
     node.crop_row = SettingsActionRow("settings-crop-row", "crop",
       function() set_settings_page("video_crop") end)
     node.speed_row = SettingsActionRow("settings-speed-row", "speed",
       function() set_settings_page("speed") end)
+    node.subtitle_preferences_row = SettingsActionRow(
+      "settings-subtitle-preferences-row", "subtitles",
+      function()
+        dialogs:prompt_text({
+          title = "Subtitle title preferences",
+          message = "按优先级输入字幕标题关键词，使用逗号分隔：",
+          default = services.config.subtitle_title_preferences()
+        }, function(value)
+          services.config.set_subtitle_title_preferences(value)
+        end)
+      end)
     node.video = TrackPopup(function() set_settings_page("root") end, {
       name = "settings-video", title = "Video", action_icon = "arrow_back",
       right_action = {
@@ -1238,6 +1251,20 @@ end
         on_click = open_subtitle_link_picker},
       right_action = {
         {
+          name = "settings-subtitles-visibility",
+          icon = function()
+            local id = mp.get_property_number("sid", 0) or 0
+            local visible = mp.get_property_native("sub-visibility") == true
+            return id ~= 0 and visible and "subtitles" or "subtitles_off"
+          end,
+          tooltip = function()
+            local id = mp.get_property_number("sid", 0) or 0
+            local visible = mp.get_property_native("sub-visibility") == true
+            return id ~= 0 and visible and "Hide Subtitles" or "Show Subtitles"
+          end,
+          on_click = toggle_subtitles
+        },
+        {
           name = "settings-secondary-subtitles",
           icon = "filter_2",
           tooltip = "Secondary Subtitles",
@@ -1252,6 +1279,7 @@ end
       },
       state = settings_state,
       on_select = function(item)
+        if subtitle_selector then subtitle_selector:mark_manual(item) end
         if item.auto_page then
           set_settings_page("auto_captions")
           return false
@@ -1320,8 +1348,7 @@ end
       update_fields(self, props)
       if self.video_keepaspect == false then
         self.video_crop_selected = "stretch"
-      elseif (tonumber(self.video_panscan) or 0) > 0.99 and
-        tostring(self.video_crop_value or "") == "" then
+      elseif (tonumber(self.video_panscan) or 0) > 0.99 then
         self.video_crop_selected = "fit"
       else
         self.video_crop_selected = crop_preset_value(self.video_crop_value)
@@ -1345,10 +1372,6 @@ end
         math.max(0, #self.audio_items - 1) .. ")",
         selected_track_label(self.audio_items, self.audio_id, "None")
       self.audio_row:update(common)
-      common.label, common.value = "Subtitles (" ..
-        tostring(self.subtitle_track_count or math.max(0, #self.subtitle_items - 1)) .. ")",
-        selected_track_label(self.subtitle_items, self.subtitle_id, "Off")
-      self.subtitle_row:update(common)
       common.label = "Crop"
       common.value = self.video_aspect_selected ~= "no" and
         ("Aspect " .. aspect_label(self.video_aspect_override)) or
@@ -1357,6 +1380,9 @@ end
       self.crop_row:update(common)
       common.label, common.value = "Playback Speed", string.format("%gx", self.speed_value)
       self.speed_row:update(common)
+      common.label, common.value = "字幕标题偏好",
+        self.subtitle_title_preferences or ""
+      self.subtitle_preferences_row:update(common)
       local page_props = {
         interactive = self.interactive, panel_alpha = self.panel_alpha,
         text_alpha = self.text_alpha, secondary_alpha = self.secondary_alpha,
@@ -1462,9 +1488,9 @@ end
       local y = bounds.y + dp(64)
       local rows = {self.video_row}
       rows[#rows + 1] = self.audio_row
-      rows[#rows + 1] = self.subtitle_row
       rows[#rows + 1] = self.crop_row
       rows[#rows + 1] = self.speed_row
+      rows[#rows + 1] = self.subtitle_preferences_row
       for _, row in ipairs(rows) do
         draw_node(row, ass, Rect({x = bounds.x + dp(8), y = y,
           w = bounds.w - dp(16), h = dp(44)}))
@@ -1654,6 +1680,7 @@ end
         props.secondary_subtitle_id = snapshot.secondary_subtitle_id
         props.auto_caption_items = ytdl_state.caption_items or {}
         props.speed_value = snapshot.speed or 1
+        props.subtitle_title_preferences = services.config.subtitle_title_preferences()
         props.subtitle_delay = snapshot.subtitle_delay or 0
         props.subtitle_font_size = snapshot.subtitle_font_size or 38
         props.subtitle_border_size = snapshot.subtitle_border_size or 1.65

@@ -406,6 +406,7 @@ local function new_track_popup(deps)
   local mouse_in, ChapterHeader = deps.mouse_in, deps.ChapterHeader
   local VerticalScrollbar, update_fields = deps.VerticalScrollbar, deps.update_fields
   local subtitle_state, audio_state = deps.subtitle_state, deps.audio_state
+  local subtitle_selector = deps.subtitle_selector
   local function TrackRow(slot, on_selected, name_prefix, on_action)
     local node = {
       item = nil, active = false, interactive = false,
@@ -674,6 +675,7 @@ local function new_track_popup(deps)
     return TrackPopup(on_close, {
       name = "subtitle-dialog", title = "Subtitles", state = subtitle_state,
       on_select = function(item)
+        if subtitle_selector then subtitle_selector:mark_manual(item) end
         if item.id == 0 then
           mp.set_property("sid", "no")
         else

@@ -397,10 +397,12 @@ function controller.new(args)
     if wheel.timer then wheel.timer:kill() end
     wheel.kind, wheel.amount, wheel.timer = nil, 0, nil
     if not kind or amount == 0 then return end
-    if kind == "seek" then
-      mp.command(string.format("osd-auto seek %g relative", amount))
-    else
-      mp.commandv("add", "volume", tostring(amount))
+    if kind == "brightness" then
+      if args.brightness then args.brightness:adjust(amount) end
+    elseif kind == "volume" then
+      if args.system_volume then
+        args.system_volume:adjust(amount)
+      end
     end
   end
 
@@ -440,15 +442,23 @@ function controller.new(args)
 
     local width = math.max(1, runtime.viewport.w)
     local horizontal_position = runtime.pointer.x / width
-    local seeking_zone = opts.seeking_zone_percentage / 100
-    local below_top_inset = runtime.pointer.y >= args.edge_seek_top_inset()
-    if below_top_inset and (horizontal_position < seeking_zone or
-      horizontal_position > 1 - seeking_zone) then
-      local step = math.max(1, tonumber(opts.seek_step_seconds) or 5)
-      local amount = direction < 0 and step or -step
-      self:queue_wheel("seek", amount)
+    if horizontal_position < 0.5 then
+      -- Keep brightness changes in the same direction as the system's
+      -- brightness keys: wheel up increases, wheel down decreases.
+      -- Brightness has its own optimistic target queue, so dispatch it
+      -- immediately instead of waiting for the volume wheel debounce. This
+      -- keeps the brightness OSD responsive while Caelestia catches up.
+      if runtime.wheel.kind then self:flush_wheel() end
+      if args.brightness then
+        args.brightness:adjust(direction < 0 and 1 or -1)
+      end
     else
-      self:queue_wheel("volume", direction < 0 and 5 or -5)
+      -- Use the same optimistic target path as brightness so the OSD updates
+      -- immediately instead of waiting for mpv's volume observer.
+      if runtime.wheel.kind then self:flush_wheel() end
+      if args.system_volume then
+        args.system_volume:adjust(direction < 0 and 2 or -2)
+      end
     end
   end
 

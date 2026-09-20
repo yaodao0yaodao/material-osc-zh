@@ -39,6 +39,22 @@ local function csv(pattern)
   end
 end
 
+-- Keep the subtitle preference string readable in the settings UI while
+-- deduplicating entries case-insensitively. Matching itself is case-insensitive
+-- in the selector, so users can preserve labels such as "Simplified" and "CN".
+local function ordered_csv(value)
+  local entries, seen = {}, {}
+  for raw in tostring(value or ""):gmatch("[^,]+") do
+    local entry = raw:match("^%s*(.-)%s*$") or ""
+    local key = entry:lower()
+    if entry ~= "" and not seen[key] then
+      seen[key] = true
+      entries[#entries + 1] = entry
+    end
+  end
+  return table.concat(entries, ",")
+end
+
 local definitions = {
   {name = "dpi_scale", default = "auto", group = "appearance"},
   {name = "language", default = "zh-CN", group = "appearance",
@@ -48,17 +64,12 @@ local definitions = {
   {name = "tooltip", default = true, group = "appearance"},
   {name = "show_mini_seekbar", default = false, group = "appearance"},
   {name = "show_empty_screen", default = true, group = "appearance"},
-  {name = "screenshot_button", default = true, group = "appearance"},
-  {name = "pip_button", default = true, group = "appearance"},
   {name = "window_controls", default = "auto", group = "appearance",
     normalize = enum("auto", {"auto", "yes", "no"})},
 
   {name = "mouse_timeout", default = 2, group = "behavior"},
   {name = "show_on_mouse_move", default = false, group = "behavior"},
   {name = "single_click_actions_enabled", default = true, group = "behavior"},
-  {name = "seeking_zone_percentage", default = 15, group = "behavior",
-    normalize = number({default = 15, min = 0, max = 50})},
-  {name = "seek_step_seconds", default = 5, group = "behavior"},
   {name = "live_edge_offset_seconds", default = 2, group = "behavior",
     normalize = function(value)
       value = tonumber(value) or 2
@@ -69,8 +80,11 @@ local definitions = {
   {name = "show_remaining_time", default = false, group = "behavior"},
   {name = "adjust_time_with_speed", default = true, group = "behavior"},
   {name = "adjust_subtitle_position", default = true, group = "behavior"},
-  {name = "max_volume_percentage", default = 150, group = "behavior",
-    normalize = number({default = 150, min = 100})},
+  {name = "subtitle_title_preferences",
+    default = "特效,Simplified,chs,CN,简,ch,zh,中", group = "behavior",
+    normalize = ordered_csv},
+  {name = "max_volume_percentage", default = 100, group = "behavior",
+    normalize = number({default = 100, min = 100})},
   {name = "skip_intro_outro_chapters", default = "ask", group = "behavior",
     normalize = enum("ask", {"yes", "no", "ask"})},
   {name = "skip_intro_detection_texts",
@@ -185,6 +199,23 @@ function schema.render_configuration(existing, values)
       serialize(values[definition.name])
   end
   return table.concat(lines, "\n") .. "\n", true
+end
+
+function schema.update_value(existing, name, value)
+  local text = tostring(existing or "")
+  local serialized = serialize(value)
+  local lines, changed, found = {}, false, false
+  for line in (text .. "\n"):gmatch("(.-)\n") do
+    local updated = line
+    if line:match("^%s*" .. tostring(name) .. "%s*=") then
+      updated, found = tostring(name) .. "=" .. serialized, true
+    end
+    if updated ~= line then changed = true end
+    lines[#lines + 1] = updated
+  end
+  local result = table.concat(lines, "\n")
+  if text:sub(-1) ~= "\n" then result = result:gsub("\n$", "") end
+  return result, found and changed
 end
 
 schema.definitions = definitions

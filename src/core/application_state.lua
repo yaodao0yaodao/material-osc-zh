@@ -54,10 +54,6 @@ function application_state.new(args)
       preview_bounds = nil, position_pill_visible = false
     },
     wheel = {kind = nil, amount = 0, timer = nil},
-    edge_seek = {
-      left = {bounds = nil},
-      right = {bounds = nil}
-    },
     chapter = {
       open = false, scroll_index = 0, bounds = nil,
       dragging_scroll = false, hidden_notified = true
@@ -200,7 +196,7 @@ function application_state.new(args)
     damping = POPUP_MORPH_DAMPING
   })
   runtime.settings.height_animation = animation.spring({
-    initial = 292,
+    initial = 308,
     stiffness = POPUP_MORPH_STIFFNESS,
     damping = POPUP_MORPH_DAMPING
   })
@@ -209,15 +205,6 @@ function application_state.new(args)
   runtime.sponsorblock.actions_opacity = animation.tween({
     initial = 0, duration = 0.16
   })
-  for _, side in ipairs({"left", "right"}) do
-    runtime.edge_seek[side].opacity = animation.tween({initial = 0, duration = 0.15})
-    runtime.edge_seek[side].slide = animation.spring({
-      initial = 0, stiffness = 460, damping = 30
-    })
-    runtime.edge_seek[side].feedback = animation.spring({
-      initial = 0, stiffness = 620, damping = 30
-    })
-  end
   runtime.tooltip.opacity = animation.tween({initial = 0, duration = TOOLTIP_FADE_DURATION})
   runtime.tooltip.slide = animation.spring({
     initial = 0,

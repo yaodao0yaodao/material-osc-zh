@@ -5,13 +5,16 @@ function playback_indicator.new(args)
   local timers = args.timers
   local service = {}
 
-  function service:show(icon, label, now, label_color)
+  function service:show(icon, label, now, label_color, smooth, duration)
+    local was_visible = state.opacity.value > 0.001 and not state.pill_only
     state.icon, state.label = icon, label
     state.label_color = label_color or "#FFFFFF"
     state.pill_only, state.show_on_empty = false, false
-    state.opacity:snap(0); state.scale:snap(0.8)
+    if not smooth or not was_visible then
+      state.opacity:snap(0); state.scale:snap(0.8)
+    end
     state.scale:set_target(1); state.opacity:set_target(1, now, 0.09)
-    timers:after(state, "hide_timer", 0.28, function()
+    timers:after(state, "hide_timer", duration or 0.28, function()
       state.opacity:set_target(0, mp.get_time(), 0.20)
       args.render()
     end)
@@ -33,6 +36,13 @@ function playback_indicator.new(args)
     end)
   end
 
+  -- Keep the observer baseline in sync when a control publishes an
+  -- optimistic volume target. This prevents the later mpv property event
+  -- from replaying the same OSD and resetting its animation.
+  function service:sync_volume(value)
+    state.last_volume = tonumber(value)
+  end
+
   function service:observe(snapshot, now)
     if state.last_paused == nil then
       state.last_paused = snapshot.paused
@@ -48,11 +58,12 @@ function playback_indicator.new(args)
     if volume_changed or mute_changed then
       state.last_volume, state.last_muted = snapshot.volume, snapshot.muted
       local volume = math.floor(snapshot.volume + 0.5)
-      local muted = snapshot.muted or volume <= 0
+      local muted = snapshot.muted
       self:show(muted and "volume_off" or
-        (volume < 50 and "volume_down" or "volume_up"),
-        muted and "Muted" or tostring(volume) .. "%", now,
-        volume > 100 and "#FF9800" or "#FFFFFF")
+        (volume <= 0 and "volume_off" or
+          (volume < 50 and "volume_down" or "volume_up")),
+        muted and "播放器音量 静音" or "播放器音量 " .. tostring(volume) .. "%", now,
+        volume > 100 and "#FF9800" or "#FFFFFF", true)
     end
 
     local subtitle_id = snapshot.subtitle_id or 0

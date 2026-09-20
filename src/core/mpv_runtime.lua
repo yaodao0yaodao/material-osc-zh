@@ -131,6 +131,8 @@ function mpv_runtime.new(args)
     args.directory_playlist:load()
     args.navigation:reset()
     args.playback_indicator:reset()
+    if args.volume then args.volume:reset() end
+    if args.subtitle_selector then args.subtitle_selector:on_file_loaded() end
     state.pointer.pending_click = nil
     if state.pointer.click_timer then
       state.pointer.click_timer:kill(); state.pointer.click_timer = nil
@@ -369,6 +371,15 @@ function mpv_runtime.new(args)
     mp.add_key_binding("c", "hold-double-speed", function(event)
       args.temporary_speed:handle(event)
     end, {complex = true, repeatable = false})
+    -- Keep keyboard player-volume feedback inside material-osc, including
+    -- repeated presses at the 0% and 100% boundaries where mpv emits no
+    -- property-change event because the value cannot move any further.
+    mp.add_key_binding(nil, "player-volume-up", function()
+      if args.volume then args.volume:adjust(5) end
+    end, {repeatable = true})
+    mp.add_key_binding(nil, "player-volume-down", function()
+      if args.volume then args.volume:adjust(-5) end
+    end, {repeatable = true})
     state.properties["input-bindings"] =
       mp.get_property_native("input-bindings", {}) or {}
 
@@ -386,10 +397,16 @@ function mpv_runtime.new(args)
     end)
     mp.register_event("start-file", function()
       state.media.loading = true
+      if args.subtitle_selector then args.subtitle_selector:on_start_file() end
       if args.live_edge then args.live_edge:reset() end
       if args.sponsorblock then args.sponsorblock:reset() end
       args.render()
     end)
+    if mp.add_hook then
+      mp.add_hook("on_preloaded", 50, function()
+        if args.subtitle_selector then args.subtitle_selector:on_preloaded() end
+      end)
+    end
     mp.register_event("end-file", function()
       state.media.loading = true
       if args.sponsorblock then args.sponsorblock:reset() end

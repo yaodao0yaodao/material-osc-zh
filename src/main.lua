@@ -36,6 +36,9 @@ local function should_force(setting, is_unconfigured)
 end
 local function apply_forced_mpv_options()
   mp.set_property("hwdec", opts.force_hwdec and "auto" or configured_hwdec)
+  -- Keep seek feedback in material-osc's bottom controller. mpv's default
+  -- osd-on-seek=bar is the large white bar over the video.
+  mp.set_property("osd-on-seek", "no")
   mp.set_property("video-sync",
     should_force(opts.force_display_resample, configured_video_sync == "audio") and
     "display-resample" or configured_video_sync)
@@ -67,7 +70,6 @@ local update_dialog_module = require "src.ui.components.update_dialog"
 local playback_indicator_module = require "src.ui.components.playback_indicator"
 local temporary_speed_indicator_module =
   require "src.ui.components.temporary_speed_indicator"
-local edge_seek_module = require "src.ui.components.edge_seek"
 local seekbar_renderer_module = require "src.ui.components.seekbar_renderer"
 local brand_logo_module = require "src.ui.brand_logo"
 local loading_indicator = require "src.ui.loading_indicator"
@@ -113,6 +115,9 @@ local dialogs = dialogs_module.new({
 })
 local persistence = persistence_module.new({filesystem = filesystem, utils = utils})
 local timers = timers_module.new({mp = mp})
+local brightness_service = require("src.services.brightness").new({
+  mp = mp, process = process, filesystem = filesystem, msg = msg
+})
 local media_title = media_title_module.new({
   mp = mp, process = process, utils = utils,
   runtime = platform_runtime, msg = msg
@@ -183,11 +188,11 @@ local function create_app(services)
   })
   node.tooltip = controls.TooltipHost()
   node.chapter = popups.ChapterDialogHost()
+  node.subtitle_dialog = popups.SubtitleDialogHost()
   node.settings = popups.SettingsDialogHost()
   node.context_menu = context_menu_module.new(services)
   node.media_information_close = media_information_close_module.new(services)
   node.update_dialog = update_dialog_module.new(services)
-  node.edge_seek = edge_seek_module.new(services)
   node.temporary_speed = temporary_speed_indicator_module.new({
     state = state.temporary_speed,
     ui = ui,
@@ -220,11 +225,15 @@ local function create_app(services)
     local modal = state.update.open or context_visible or state.playlist.open or
       state.playlist.animation:is_running() or
       state.chapter.open or state.chapter.animation.value > 0.001 or
+      state.subtitle.open or state.subtitle.animation.value > 0.001 or
       state.settings.open or state.settings.animation.value > 0.001
     self.empty_state:update(self.empty_visible, self.empty_visible and not modal)
     self.tooltip:set_suppressed(
       self.playlist_empty or state.controller.opacity.value <= 0 or modal)
     self.chapter:update(snapshot)
+    if state.subtitle.open or state.subtitle.animation:is_running() then
+      self.subtitle_dialog:update(snapshot)
+    end
     self.settings:update(snapshot)
     if context_visible then self.context_menu:update(snapshot) end
     self.media_information_close:update()
@@ -279,10 +288,14 @@ local function create_app(services)
       self.playlist_controls:update(snapshot)
     end
     if chapter_visible then self.chapter:update(snapshot) end
+    if state.subtitle.open or state.subtitle.animation:is_running() then
+      self.subtitle_dialog:update(snapshot)
+    end
     if settings_visible then self.settings:update(snapshot) end
     if context_visible then self.context_menu:update(snapshot, false) end
     local modal = state.update.open or playlist_visible or chapter_visible or
-      settings_visible or context_visible
+      settings_visible or context_visible or
+      state.subtitle.open or state.subtitle.animation.value > 0.001
     self.empty_state:update(self.empty_visible, self.empty_visible and not modal)
     self.tooltip:set_suppressed(
       self.playlist_empty or state.controller.opacity.value <= 0 or modal)
@@ -297,13 +310,16 @@ local function create_app(services)
       state.chapter.open or state.chapter.animation.value > 0.001
     local settings_visible =
       state.settings.open or state.settings.animation.value > 0.001
+    local subtitle_visible =
+      state.subtitle.open or state.subtitle.animation.value > 0.001
     local context_visible = state.context_menu.open or
       state.context_menu.pending_x ~= nil or
       state.context_menu.animation:is_running() or
       state.context_menu.animation.value > 0.001 or
       state.context_menu.width_animation:is_running() or
       state.context_menu.height_animation:is_running()
-    return playlist_visible, chapter_visible, settings_visible, context_visible
+    return playlist_visible, chapter_visible, settings_visible, context_visible,
+      subtitle_visible
   end
 
   local function modal_is_open()
@@ -320,11 +336,12 @@ local function create_app(services)
       ui.draw_node(self.video, ass, root)
     end
     ui.draw_node(self.empty_state, ass, root)
-    local playlist_visible, chapter_visible, settings_visible, context_visible =
+    local playlist_visible, chapter_visible, settings_visible, context_visible,
+      subtitle_visible =
       visibility()
     local pointer_x, pointer_y = state.pointer.x, state.pointer.y
     if playlist_visible or chapter_visible or settings_visible or
-      context_visible then
+      subtitle_visible or context_visible then
       state.pointer.x, state.pointer.y = -1, -1
     end
 
@@ -343,7 +360,6 @@ local function create_app(services)
     elseif self.playlist_empty then
       state.controller.bounds = nil
       state.volume.popup_bounds, state.volume.button_bounds = nil, nil
-      state.edge_seek.left.bounds, state.edge_seek.right.bounds = nil, nil
     elseif state.controller.opacity.value > 0 then
       state.controller.bounds = ui.draw_node(self.controller, ass, root)
     else
@@ -366,7 +382,7 @@ local function create_app(services)
         x = root.x,
         y = root.y,
         w = root.w,
-        h = math.max(controls_size.h, ui.edge_seek_top_inset())
+        h = math.max(controls_size.h, ui.window_drag_top_inset())
       })
       -- Measure and register button hitboxes in the retained base pass, but
       -- render the buttons only in the interaction overlay while revealed.
@@ -475,7 +491,6 @@ local function create_app(services)
     end
     if state.snapshot.buffering then services.loading.draw(ass) end
     services.playback_indicator:draw(ass, root)
-    self.edge_seek:draw(ass, root)
     ui.draw_node(self.media_information_close, ass, root)
     if state.pip.active and state.controller.opacity.value > 0 then
       ui.draw_node(self.pip_control, ass, root)
@@ -488,11 +503,13 @@ local function create_app(services)
       state.pointer.x, state.pointer.y = -1, -1
     end
     state.input.drawing_keyboard_focus = true
-    local playlist_visible, chapter_visible, settings_visible, context_visible =
+    local playlist_visible, chapter_visible, settings_visible, context_visible,
+      subtitle_visible =
       visibility()
     if playlist_visible then self.playlist_controls:draw_expanded(ass, root)
     elseif chapter_visible then ui.draw_node(self.chapter, ass, root)
-    elseif settings_visible then ui.draw_node(self.settings, ass, root) end
+    elseif settings_visible then ui.draw_node(self.settings, ass, root)
+    elseif subtitle_visible then ui.draw_node(self.subtitle_dialog, ass, root) end
     if context_visible then ui.draw_node(self.context_menu, ass, root) end
     if state.update.open then ui.draw_node(self.update_dialog, ass, root) end
     state.input.drawing_keyboard_focus = false
@@ -529,9 +546,7 @@ local function create_app(services)
       self.no_video_opacity > 0 or
       (not self.playlist_empty and (
         state.controller.opacity.value > 0.001 or
-        state.playback_indicator.opacity.value > 0.001 or
-        state.edge_seek.left.opacity.value > 0.001 or
-        state.edge_seek.right.opacity.value > 0.001)) or
+        state.playback_indicator.opacity.value > 0.001)) or
       state.tooltip.opacity.value > 0.001 or state.update.open or
       (not self.playlist_empty and (
         state.temporary_speed.active or self.media_information_close.visible)) then
@@ -608,7 +623,7 @@ local clamp = function(value, minimum, maximum)
   return ui_renderer:clamp(value, minimum, maximum)
 end
 local dp = function(value) return ui_renderer:dp(value) end
-local edge_seek_top_inset = function() return dp(64) end
+local window_drag_top_inset = function() return dp(64) end
 
 local text_metrics = text_metrics_module.new({
   dp = dp,
@@ -627,6 +642,23 @@ if opts.max_volume_percentage ~= option_defaults.max_volume_percentage then
 end
 max_volume_percentage = math.max(100, max_volume_percentage)
 mp.set_property_number("volume-max", max_volume_percentage)
+runtime.volume_service = require("src.services.volume").new({
+  mp = mp,
+  properties = runtime.properties,
+  max_value = function() return max_volume_percentage end
+})
+runtime.system_volume_service = require("src.services.system_volume").new({
+  process = process, msg = msg
+})
+runtime.file_state = require("src.services.file_state").new({
+  mp = mp,
+  store = persistence:json(mp.command_native({
+    "expand-path", "~~state/material-osc-file-state.json"
+  }))
+})
+runtime.subtitle_selector = require("src.services.subtitle_selector").new({
+  mp = mp, msg = msg, preferences = opts.subtitle_title_preferences
+})
 
 local ass_color = function(hex) return ui_renderer:ass_color(hex) end
 local ass_alpha_for_opacity = function(opacity) return ui_renderer:alpha(opacity) end
@@ -654,6 +686,7 @@ local seek_to_pos = function(value) return player:seek(value) end
 local menu_keyboard
 local navigation = navigation_module.new({
   runtime = runtime, mp = mp, dp = dp,
+  subtitle_selector = runtime.subtitle_selector,
   render = function() if render then render() end end
 })
 local function set_dialog_open(name, open)
@@ -747,7 +780,6 @@ local media_loader = media_loader_module.new({
   dialogs = dialogs,
   render = function(...) return render(...) end
 })
-
 local controller
 local playback_indicator
 local bookmark_service = bookmark_service_module.new({
@@ -924,7 +956,15 @@ local updater = update_service_module.new({
 local services = {
   state = runtime,
   timers = timers,
+  dialogs = dialogs,
   updater = updater,
+  autocrop = require("src.services.autocrop").new({
+    mp = mp,
+    render = function() if render then render() end end
+  }),
+  brightness = brightness_service,
+  volume = runtime.volume_service,
+  system_volume = runtime.system_volume_service,
   bookmarks = bookmark_service,
   easter_eggs = easter_egg_collection,
   context_actions = context_actions,
@@ -936,8 +976,34 @@ local services = {
     tooltip_delay = function() return tooltip_service:current_delay() end,
     tooltip_slide_distance = tooltip_service.slide_distance,
     max_volume_percentage = max_volume_percentage,
-    temporary_speed = function() return opts.temporary_speed end
+    temporary_speed = function() return opts.temporary_speed end,
+    subtitle_title_preferences = function()
+      return opts.subtitle_title_preferences
+    end,
+    set_subtitle_title_preferences = function(value)
+      local candidate = {}
+      for name, current in pairs(opts) do candidate[name] = current end
+      candidate.subtitle_title_preferences = value
+      local normalized = config_schema.normalize(candidate).subtitle_title_preferences
+      opts.subtitle_title_preferences = normalized
+      runtime.subtitle_selector:set_preferences(normalized)
+      local path = mp.command_native({
+        "expand-path", "~~/script-opts/material-osc.conf"
+      })
+      local existing = filesystem:read(path) or ""
+      local contents, changed = config_schema.render_configuration(
+        existing, opts)
+      local updated, value_changed = config_schema.update_value(
+        contents, "subtitle_title_preferences", normalized)
+      if (changed or value_changed) and not filesystem:write_atomic(path, updated) then
+        toast_service:error("Could not save subtitle preferences", {duration = 2})
+      else
+        toast_service:success("Subtitle preferences saved", {duration = 2})
+      end
+      if render then render() end
+    end
   },
+  subtitle_selector = runtime.subtitle_selector,
   platform = {
     msg = msg, filesystem = filesystem, process = process,
     runtime = platform_runtime
@@ -951,7 +1017,7 @@ local services = {
     dp = dp, clamp = clamp, smooth_step = smooth_step, lerp = lerp,
     now = function() return mp.get_time() end,
     dpi_scale = function() return ui_renderer:dpi_scale() end,
-    edge_seek_top_inset = edge_seek_top_inset,
+    window_drag_top_inset = window_drag_top_inset,
     alpha = ass_alpha_for_opacity, draw_rect = draw_rect, draw_box = draw_box,
     draw_round_box = draw_round_box,
     draw_icon = draw_icon, draw_brand_logo = draw_brand_logo,
@@ -1009,6 +1075,37 @@ playback_indicator = playback_indicator_module.new({
   timers = timers,
   render = function() render() end
 })
+runtime.volume_service:set_on_change(function(value)
+  local volume = math.floor((tonumber(value) or 0) + 0.5)
+  local muted = mp.get_property_native("mute") == true
+  playback_indicator:sync_volume(value)
+  playback_indicator:show(muted and "volume_off" or
+    (volume <= 0 and "volume_off" or
+      (volume < 50 and "volume_down" or "volume_up")),
+    muted and "播放器音量 静音" or "播放器音量 " .. tostring(volume) .. "%",
+    mp.get_time(),
+    volume > 100 and "#FF9800" or "#FFFFFF", true, 0.6)
+  if render then render(false, "interaction") end
+end)
+runtime.system_volume_service:set_on_change(function(value)
+  local volume = math.floor((tonumber(value) or 0) + 0.5)
+  local icon = volume <= 0 and "volume_off" or "speaker"
+  playback_indicator:show(icon, "系统音量 " .. tostring(volume) .. "%",
+    mp.get_time(), "#FFFFFF", true, 0.6)
+  if render then render(false, "interaction") end
+end)
+brightness_service:set_on_change(function(value)
+  local percentage = math.floor((tonumber(value) or 0) * 100 + 0.5)
+  local icon = percentage < 34 and "brightness_low" or
+    (percentage > 66 and "brightness_high" or "brightness_medium")
+  playback_indicator:show(icon, tostring(percentage) .. "%", mp.get_time(),
+    "#FFFFFF", true, 0.6)
+  -- Brightness changes do not arrive through an mpv property observer. Ask
+  -- for an interaction-layer redraw explicitly, otherwise a hidden
+  -- controller leaves only the dynamic layer on screen and the OSD waits for
+  -- an unrelated input/property event before becoming visible.
+  if render then render(false, "interaction") end
+end)
 toast_service:bind(playback_indicator)
 services.playback_indicator = playback_indicator
 services.loading = {draw = draw_loading_shape_morph}
@@ -1040,13 +1137,6 @@ local animation_coordinator = animation_coordinator_module.new({
   show_window_controls_with_controller = function()
     return opts.show_on_mouse_move
   end,
-  single_click_actions_enabled = function()
-    return opts.single_click_actions_enabled
-  end,
-  seeking_zone_fraction = function()
-    return opts.seeking_zone_percentage / 100
-  end,
-  edge_seek_top_inset = edge_seek_top_inset,
   hide_cursor = function()
     runtime_host:set_cursor_autohide(cursor_never_hides() and "no" or "always")
   end,
@@ -1064,6 +1154,9 @@ runtime_host = mpv_runtime_module.new({
   context_menu_enabled = function() return opts.context_menu end,
   menu_keyboard = menu_keyboard,
   playback_indicator = playback_indicator,
+  volume = runtime.volume_service,
+  system_volume = runtime.system_volume_service,
+  subtitle_selector = runtime.subtitle_selector,
   live_edge = live_edge,
   stream_quality = stream_quality,
   sponsorblock = sponsorblock_service,
@@ -1096,6 +1189,16 @@ runtime_host = mpv_runtime_module.new({
       runtime.pip.active and services.pip and
       services.pip.exit_for_window_state then
       services.pip.exit_for_window_state("maximized")
+    end
+    if name == "volume" then runtime.volume_service:observe(value) end
+    if name == "track-list" then
+      runtime.subtitle_selector:on_tracks_changed()
+    end
+    if name == "seeking" and value == true and controller then
+      -- Keyboard seeks do not pass through the material-osc seekbar. Reveal
+      -- the bottom controller so its progress bar and time control provide
+      -- the only visible seek feedback.
+      controller:show()
     end
   end,
   needs_continuous_render = function()
@@ -1232,8 +1335,10 @@ end
 local function recreate_app() app = create_app(services) end
 controller = controller_module.new({
   runtime = runtime, mp = mp, opts = opts, navigation = navigation,
+  volume = runtime.volume_service,
+  system_volume = runtime.system_volume_service,
   thumbnail = thumbnail_service, mouse_in = mouse_in,
-  edge_seek_top_inset = edge_seek_top_inset,
+  brightness = brightness_service,
   hitbox_at_cursor = hitbox_at_cursor,
   open_context_menu = open_context_menu,
   set_cursor_autohide = function(value)
@@ -1294,6 +1399,9 @@ options_update_handler = function(changed)
     apply_forced_mpv_options()
   end
   if changed.temporary_speed then temporary_speed:update_target() end
+  if changed.subtitle_title_preferences then
+    runtime.subtitle_selector:set_preferences(opts.subtitle_title_preferences)
+  end
   if changed.sponsorblock_should_use or
     changed.sponsorblock_auto_skip_categories or
     changed.sponsorblock_ignore_categories or
@@ -1305,7 +1413,6 @@ options_update_handler = function(changed)
     sponsorblock_service:on_options_changed(changed)
   end
   if changed.dpi_scale or changed.single_click_actions_enabled or
-    changed.seeking_zone_percentage or changed.seek_step_seconds or
     changed.max_volume_percentage then
     recreate_app()
   end
@@ -1343,6 +1450,9 @@ config_watcher = config_watcher_module.new({
 mp.register_event("shutdown", function() config_watcher:stop() end)
 mp.register_event("shutdown", function() subtitle_position:dispose() end)
 mp.register_event("shutdown", function() sponsorblock_service:dispose() end)
+mp.register_event("shutdown", function() brightness_service:dispose() end)
+mp.register_event("shutdown", function() runtime.system_volume_service:dispose() end)
+mp.register_event("shutdown", function() runtime.subtitle_selector:dispose() end)
 if performance then
   mp.register_event("shutdown", function()
     msg.warn(string.format(
@@ -1387,6 +1497,7 @@ if performance then
   end)
 end
 
+brightness_service:start()
 runtime_host:start()
 if cursor_never_hides() then runtime_host:set_cursor_autohide("no") end
 if opts.show_on_mouse_move then controller:show() end

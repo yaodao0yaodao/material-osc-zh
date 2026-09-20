@@ -56,15 +56,28 @@ height, with width calculated from the video's aspect ratio; see
 | --- | --- | --- | --- |
 | `mouse_timeout` | `2` | Seconds; `0` disables timeout | Controls how long the UI remains visible after pointer activity. |
 | `show_on_mouse_move` | `no` | `yes`, `no` | With `yes`, movement anywhere reveals the UI. With `no`, use the bottom edge for playback controls or the top edge for window controls. |
-| `single_click_actions_enabled` | `yes` | `yes`, `no` | Enables single-click play/pause and left/right edge seeking. Double-click fullscreen remains available when disabled. |
-| `seeking_zone_percentage` | `15` | `0`–`50` | Sets each fast-seek zone's width as a percentage of the window. |
-| `seek_step_seconds` | `5` | Seconds; minimum `1` | Sets how far edge clicks and edge scrolling seek backward or forward. |
+| `single_click_actions_enabled` | `yes` | `yes`, `no` | Enables single-click play/pause. Double-click fullscreen remains available when disabled. |
 | `live_edge_offset_seconds` | `2` | Non-negative seconds or `-1` | After a live stream resumes from pausing or buffering, seeks this far behind the live edge. Set to `-1` to disable automatic catch-up. |
 | `temporary_speed` | `2` | Playback rate greater than `0` | Sets the speed used while the `hold-double-speed` binding is held. |
 | `show_remaining_time` | `no` | `yes`, `no` | Shows remaining time instead of elapsed time by default. The time display remains clickable to toggle modes. |
 | `adjust_time_with_speed` | `yes` | `yes`, `no` | Adjusts elapsed, remaining, and total displayed time for the current playback speed. |
 | `adjust_subtitle_position` | `yes` | `yes`, `no` | Moves bottom-aligned subtitles above the OSC while it is visible. Set to `no` to preserve mpv's configured `sub-pos`. |
-| `max_volume_percentage` | `150` | Percentage; minimum `100` | Sets mpv's upper volume limit and the OSC volume range. Left at its default, material-osc preserves mpv's configured `volume-max` instead; set this explicitly to override it. |
+| `subtitle_title_preferences` | `特效,Simplified,chs,CN,简,ch,zh,中` | Comma-separated titles | Default-only ordered title preference used when mpv's `sid` option is `auto`; explicit or watch-later subtitle choices are preserved. The same value can be edited from Settings. |
+| `max_volume_percentage` | `100` | Percentage; minimum `100` | Sets mpv's upper volume limit and the OSC volume range. Keyboard player-volume controls are capped at 100% by default. |
+
+The left and right halves of the video window have dedicated wheel actions: the
+left half adjusts the monitor backlight through Caelestia, while the right half
+adjusts the system output volume by 2% per wheel step and shows the logical
+system-volume target through the material-osc indicator. On the configured Jieli
+USB speaker, the logical 0–100% range is mapped to its usable 34–100% hardware
+range. Up/Down keys adjust mpv's independent player volume by 5% and always
+show feedback, including when the value is already at 0% or 100%. Seek dragging likewise
+uses material-osc's progress bar/time pill without the native OSD. The last
+keyboard seek also reveals the bottom controller. The last brightness selected
+through mpv is remembered in
+`script-opts/material-osc-brightness`; when mpv starts it
+is restored, and when mpv exits the brightness from before that session is
+restored.
 
 </details>
 

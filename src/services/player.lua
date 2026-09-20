@@ -36,7 +36,11 @@ function player.new(args)
   end
 
   function service:seek(position)
-    if position then mp.commandv("seek", position, "absolute+exact") end
+    if position then
+      -- Keep seek feedback in material-osc's seekbar/time pill. The plain
+      -- seek command would also open mpv's native OSD.
+      mp.commandv("no-osd", "seek", position, "absolute+exact")
+    end
   end
 
   function service:preview_seek(box)

@@ -7,7 +7,9 @@ function controls.new(services)
   local pointer, volume_state = state.pointer, state.volume
   local seek_state, tooltip_state = state.seek, state.tooltip
   local time_state, chapter_state = state.time, state.chapter
+  local subtitle_state = state.subtitle
   local settings_state = state.settings
+  local autocrop = services.autocrop
   local get_snapshot = player.snapshot
   local dp, clamp = ui.dp, ui.clamp
   local smooth_step, lerp = ui.smooth_step, ui.lerp
@@ -21,8 +23,8 @@ function controls.new(services)
   local preview_seek_to_mouse = player.preview_seek_to_mouse
   local seek_pos_from_mouse, seek_to_pos = player.seek_pos_from_mouse, player.seek_to_pos
   local set_chapter_dialog_open = navigation.set_chapter_open
+  local set_subtitle_dialog_open = navigation.set_subtitle_open
   local set_settings_dialog_open = navigation.set_settings_open
-  local toggle_subtitles, cycle_subtitle = navigation.toggle_subtitles, navigation.cycle_subtitle
   local tooltip_delay, tooltip_slide_distance = config.tooltip_delay, config.tooltip_slide_distance
   local max_volume_percentage = config.max_volume_percentage
   local default_text_font = ui.default_text_font
@@ -33,6 +35,19 @@ function controls.new(services)
   local Visibility, Row, Pill = ui.Visibility, ui.Row, ui.Pill
   local ConnectedPill = ui.ConnectedPill
   local is_render_pass = ui.is_render_pass
+
+  local function adjust_wheel_volume(amount)
+    if services.system_volume then
+      services.system_volume:adjust(amount)
+      return
+    end
+    local current = mp.get_property_number("volume", 0) or 0
+    local target = clamp(current + (tonumber(amount) or 0), 0, 100)
+    if math.abs(target - current) > 0.0001 then
+      -- Wheel adjustments use the material-osc indicator, not mpv's native OSD.
+      mp.set_property_number("volume", target)
+    end
+  end
 
   local function set_pip_enabled(enabled, requested_window_state)
     timers:cancel(state.pip, "raise_timer")
@@ -106,7 +121,11 @@ function controls.new(services)
       local track_length = node.track_y2 - node.track_y1
       if track_length <= 0 then return end
       local value = clamp((node.track_y2 - pointer.y) / track_length, 0, 1)
-      mp.set_property_number("volume", value * node.max_volume_percentage)
+      if services.volume then
+        services.volume:set(value * node.max_volume_percentage)
+      else
+        mp.set_property_number("volume", value * node.max_volume_percentage)
+      end
     end
 
     node.modifier:pointerArea({
@@ -125,8 +144,8 @@ function controls.new(services)
         volume_state.dragging = false
         render()
       end,
-      on_scroll_up = function() mp.commandv("add", "volume", "5") end,
-      on_scroll_down = function() mp.commandv("add", "volume", "-5") end
+      on_scroll_up = function() adjust_wheel_volume(2) end,
+      on_scroll_down = function() adjust_wheel_volume(-2) end
     })
 
     function node:update(snapshot, progress)
@@ -196,8 +215,8 @@ function controls.new(services)
         name = "volume-popup-guard",
         enabled = false,
         on_click = function() end,
-        on_scroll_up = function() mp.commandv("add", "volume", "5") end,
-        on_scroll_down = function() mp.commandv("add", "volume", "-5") end
+        on_scroll_up = function() adjust_wheel_volume(2) end,
+        on_scroll_down = function() adjust_wheel_volume(-2) end
       })
     }
     function node.guard:measure(parent)
@@ -214,11 +233,11 @@ function controls.new(services)
       on_click = function() mp.commandv("cycle", "mute") end,
       on_scroll_up = function()
         volume_state.tooltip_suppressed_until = mp.get_time() + tooltip_delay()
-        mp.commandv("add", "volume", "5")
+        adjust_wheel_volume(2)
       end,
       on_scroll_down = function()
         volume_state.tooltip_suppressed_until = mp.get_time() + tooltip_delay()
-        mp.commandv("add", "volume", "-5")
+        adjust_wheel_volume(-2)
       end
     })
     node.slider = VolumeSlider()
@@ -318,8 +337,6 @@ function controls.new(services)
         seek_state.position = nil
         seek_state.offset_x = 0
       end,
-      on_scroll_up = function() mp.commandv("seek", "5", "relative") end,
-      on_scroll_down = function() mp.commandv("seek", "-5", "relative") end
     })
 
     function node:measure(parent)
@@ -793,36 +810,26 @@ function controls.new(services)
     })
     node.subtitles = IconButton({name = "subtitles-button", icon = "subtitles",
       horizontal_padding = 6, tooltip = "Subtitles",
-      shortcut = "subtitles",
-      on_click = toggle_subtitles,
-      on_scroll_up = function() cycle_subtitle(-1) end,
-      on_scroll_down = function() cycle_subtitle(1) end})
-    node.subtitles_visibility = Visibility({
-      visible = false,
-      child = node.subtitles
-    })
-    node.screenshot = IconButton({name = "screenshot-button", icon = "photo_camera",
-      horizontal_padding = 6, tooltip = "Take Screenshot",
-      shortcut = "screenshot",
-      on_click = function() mp.commandv("screenshot", "subtitles") end})
-    node.screenshot_visibility = Visibility({
-      visible = config.opts.screenshot_button,
-      child = node.screenshot
-    })
+      on_click = function()
+        set_subtitle_dialog_open(not subtitle_state.open)
+      end})
+    node.speed = IconButton({name = "playback-speed-button", icon = "speed",
+      horizontal_padding = 6, tooltip = "Playback Speed",
+      on_click = function()
+        local speed = mp.get_property_number("speed", 1) or 1
+        mp.set_property_number("speed", math.abs(speed - 2) < 0.01 and 1 or 2)
+      end})
+    node.zoom = IconButton({name = "fit-to-screen-button", icon = "crop",
+      horizontal_padding = 6, tooltip = "Fit to Screen",
+      on_click = function()
+        autocrop:set_fit(not autocrop:is_fit())
+      end})
     node.settings = IconButton({name = "settings-button", icon = "settings",
       horizontal_padding = 6, tooltip = "Settings",
       shortcut = "open-settings",
       on_click = function()
         set_settings_dialog_open(not settings_state.open)
       end})
-    node.pip = IconButton({name = "picture-in-picture-button",
-      icon = "picture_in_picture_alt", horizontal_padding = 6,
-      tooltip = "Picture in Picture",
-      on_click = function() set_pip_enabled(not state.pip.active) end})
-    node.pip_visibility = Visibility({
-      visible = config.opts.pip_button,
-      child = node.pip
-    })
     node.fullscreen = IconButton({name = "fullscreen-button",
       icon = "open_in_full", horizontal_padding = 6, tooltip = "Fullscreen",
       shortcut = "fullscreen",
@@ -830,8 +837,7 @@ function controls.new(services)
     node.ending = Pill({
       gap = 0,
       children = {
-        node.subtitles_visibility, node.screenshot_visibility,
-        node.pip_visibility, node.settings, node.fullscreen
+        node.subtitles, node.speed, node.zoom, node.settings, node.fullscreen
       },
       modifier = Modifier()
     })
@@ -847,8 +853,6 @@ function controls.new(services)
 
     function node:update(snapshot, static_changed)
       self.sponsorblock:update()
-      self.screenshot_visibility:set_visible(config.opts.screenshot_button)
-      self.pip_visibility:set_visible(config.opts.pip_button)
       if static_changed then
         self.play:update({
           icon = snapshot.paused and "play_arrow" or "pause",
@@ -876,16 +880,25 @@ function controls.new(services)
       if static_changed then
         self.chapter_text:update({text = snapshot.chapter_name or ""})
         self.chapter:set_visible(snapshot.chapter_name ~= nil)
-        local subtitles_on = snapshot.subtitle_id ~= 0 and snapshot.sub_visibility
-        self.subtitles_visibility:set_visible(#snapshot.subtitle_items > 1)
-        self.subtitles:update({
-          icon = subtitles_on and "subtitles" or "subtitles_off",
-          tooltip = subtitles_on and "Hide Subtitles" or "Show Subtitles"
+        local speed = tonumber(snapshot.speed) or 1
+        self.speed:update({
+          display_text = math.abs(speed - 1) < 0.01 and "" or
+            string.format("%.2gx", speed),
+          tooltip = "Playback Speed"
         })
-        self.pip:update({
-          icon = state.pip.active and "pip_exit" or "picture_in_picture_alt",
-          tooltip = state.pip.active and
-            "Exit Picture in Picture" or "Picture in Picture"
+        local zoom_icon, zoom_tooltip
+        if snapshot.video_keepaspect == false then
+          zoom_icon, zoom_tooltip = "open_in_full", "Fit to Screen"
+        elseif (tonumber(snapshot.video_panscan) or 0) > 0.99 then
+          zoom_icon, zoom_tooltip = "fit_screen", "Original"
+        elseif tostring(snapshot.video_crop or "") ~= "" then
+          zoom_icon, zoom_tooltip = "crop", "Fit to Screen"
+        else
+          zoom_icon, zoom_tooltip = "aspect_ratio", "Fit to Screen"
+        end
+        self.zoom:update({
+          icon = zoom_icon,
+          tooltip = zoom_tooltip
         })
         self.fullscreen:update({
           icon = snapshot.fullscreen and "close_fullscreen" or "open_in_full",
@@ -1060,7 +1073,7 @@ function controls.new(services)
   local function WindowDragArea()
     local node = {
       modifier = Modifier():fillMaxWidth():height(
-        ui.edge_seek_top_inset()):pointerArea({
+        ui.window_drag_top_inset()):pointerArea({
           name = "window-drag-area"
         })
     }

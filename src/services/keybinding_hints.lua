@@ -12,12 +12,14 @@ local MATCHERS = {
   ["volume-up"] = function(command)
     local amount = command:match(
       "^add%s+volume%s+([%+%-]?[%d%.]+)")
-    return amount and tonumber(amount) and tonumber(amount) > 0
+    return (amount and tonumber(amount) and tonumber(amount) > 0) or
+      command:find("script-binding material_osc/player-volume-up", 1, true) ~= nil
   end,
   ["volume-down"] = function(command)
     local amount = command:match(
       "^add%s+volume%s+([%+%-]?[%d%.]+)")
-    return amount and tonumber(amount) and tonumber(amount) < 0
+    return (amount and tonumber(amount) and tonumber(amount) < 0) or
+      command:find("script-binding material_osc/player-volume-down", 1, true) ~= nil
   end,
   ["speed-up"] = function(command)
     local amount = command:match(

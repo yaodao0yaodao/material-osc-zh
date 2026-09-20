@@ -96,6 +96,7 @@ function navigation.new(args)
   end
 
   function service:select_subtitle(item)
+    if args.subtitle_selector then args.subtitle_selector:mark_manual(item) end
     if not item or item.id == 0 then
       mp.set_property("sid", "no")
       return
@@ -145,7 +146,7 @@ function navigation.new(args)
     state.fade:snap(0)
     state.content_animation:snap(1)
     state.width_animation:snap(args.dp(320))
-    state.height_animation:snap(args.dp(292))
+    state.height_animation:snap(args.dp(308))
   end
 
   return service
