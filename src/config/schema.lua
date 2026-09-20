@@ -60,6 +60,8 @@ local definitions = {
   {name = "language", default = "zh-CN", group = "appearance",
     normalize = language},
   {name = "accent_color", default = "#00bbff", group = "appearance"},
+  {name = "empty_screen_background_color", default = "#FFF8F6",
+    group = "appearance"},
   {name = "context_menu", default = true, group = "appearance"},
   {name = "tooltip", default = true, group = "appearance"},
   {name = "show_mini_seekbar", default = false, group = "appearance"},

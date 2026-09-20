@@ -26,7 +26,13 @@
 ```conf
 # 默认简体中文；可改为 en，或改为 auto 跟随 LANG/LC_ALL
 language=zh-CN
+accent_color="#8c4e43"
+empty_screen_background_color="#FFF8F6"
 ```
+
+空播放器主界面默认使用 Caelestia 浅色方案的 `#FFF8F6`，并根据背景明暗自动选择
+黑色或白色前景。Logo 的深色结构使用 `accent_color`，按钮、文字和背景图案也会
+保持足够对比度。
 
 媒体标题、字幕内容和流媒体元数据不会被翻译；它们由文件或播放器提供，保留
 原文更适合识别内容。若遇到未覆盖的新文案，会安全地显示英文原文。

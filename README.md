@@ -32,7 +32,8 @@ material-osc can be customized with a `material-osc.conf` file in mpv's
 | --- | --- | --- | --- |
 | `dpi_scale` | `auto` | `auto` or `0.5`–`4` | Uses the display scale automatically or applies a fixed UI scale. |
 | `language` | `zh-CN` | `zh-CN`, `en`, `auto` | Selects the interface language. `auto` follows the `LANG`/`LC_ALL` locale. |
-| `accent_color` | `"#00bbff"` | Quoted six-digit RGB color | Sets the seekbar, selections, toggles, and other highlighted elements. |
+| `accent_color` | `"#00bbff"` | Quoted six-digit RGB color | Sets the seekbar, selections, toggles, empty-screen logo details, and other highlighted elements. |
+| `empty_screen_background_color` | `"#FFF8F6"` | Quoted six-digit RGB color | Sets the empty-player background independently from the accent color. Foreground contrast is selected automatically. |
 | `context_menu` | `yes` | `yes`, `no` | Enables the material-osc context menu. When disabled, right-click and menu-key bindings remain available to mpv and other scripts. |
 | `tooltip` | `yes` | `yes`, `no` | Enables tooltips for controls. |
 | `show_mini_seekbar` | `no` | `yes`, `no` | Keeps a 1dp playback-progress line at the bottom while the main controls are hidden. |

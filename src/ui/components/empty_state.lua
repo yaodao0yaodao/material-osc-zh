@@ -1,7 +1,6 @@
 local empty_state = {}
 
 function empty_state.new(services)
-  local background_color = "#111318"
   local ui = services.ui
   local dp, alpha, lerp = ui.dp, ui.alpha, ui.lerp
   local Modifier, apply_modifier_size = ui.Modifier, ui.apply_modifier_size
@@ -33,7 +32,6 @@ function empty_state.new(services)
     "the narwhal bacons at midnight", "reddit hug of death",
     "404 sleep not found", "there are 10 types of people", "ඞ"
   }
-  local marquee_color = "#E2E2E6"
   local marquee_hover_opacity = 0.10
   local marquee_hover_duration = 0.3
   local marquee_hover_states = {}
@@ -58,18 +56,40 @@ function empty_state.new(services)
   local marquee_sin = math.sin(marquee_radians)
   local marquee_seed = (os.time() * 1000 +
     math.floor((ui.now() % 1) * 1000)) % 1000003
+  local foreground_cache = {}
 
-  local function blend_color(from, target, progress)
-    if progress <= 0 then return from end
-    if progress >= 1 then return target end
-    local fr, fg, fb = from:match("#?(%x%x)(%x%x)(%x%x)")
-    local tr, tg, tb = target:match("#?(%x%x)(%x%x)(%x%x)")
-    if not fr or not tr then return progress < 0.5 and from or target end
-    local function channel(a, b)
-      return math.floor(lerp(tonumber(a, 16), tonumber(b, 16), progress) + 0.5)
+  local function background_color()
+    return opts.empty_screen_background_color or "#FFF8F6"
+  end
+
+  local function foreground_color()
+    local background = tostring(background_color())
+    if foreground_cache.background == background then
+      return foreground_cache.color
     end
-    return string.format("#%02X%02X%02X",
-      channel(fr, tr), channel(fg, tg), channel(fb, tb))
+    local r, g, b = background:
+      match("#?(%x%x)(%x%x)(%x%x)")
+    if not r then
+      foreground_cache = {background = background, color = "#111318"}
+      return foreground_cache.color
+    end
+    local function linear(value)
+      value = tonumber(value, 16) / 255
+      return value <= 0.04045 and value / 12.92 or
+        ((value + 0.055) / 1.055) ^ 2.4
+    end
+    local luminance = 0.2126 * linear(r) + 0.7152 * linear(g) +
+      0.0722 * linear(b)
+    foreground_cache = {
+      background = background,
+      color = luminance > 0.179 and "#111318" or "#FFFFFF"
+    }
+    return foreground_cache.color
+  end
+
+  local function ass_color(color)
+    local r, g, b = tostring(color or ""):match("#?(%x%x)(%x%x)(%x%x)")
+    return r and (b .. g .. r):upper() or "FFFFFF"
   end
 
   local function marquee_hover_progress(key, hovered, now)
@@ -268,7 +288,7 @@ function empty_state.new(services)
             if collection_progress < 1 then
               draw_text(ass, rotated_x, rotated_y,
                 item.text, item.font_size,
-                blend_color(marquee_color, opts.accent_color, hover_progress),
+                foreground_color(),
                 alpha(opacity * lerp(
                   0.030, marquee_hover_opacity, hover_progress) *
                   (1 - collection_progress)),
@@ -349,11 +369,12 @@ function empty_state.new(services)
     function node:draw(ass, bounds)
       if not self.visible or not ui.is_render_pass("interaction") then return end
       local hovered = self.interactive and ui.mouse_in(bounds)
+      local foreground = foreground_color()
       draw_box(ass, bounds.x, bounds.y, bounds.x2, bounds.y2, bounds.h / 2,
-        "#44474E", "00", true)
+        foreground, "CC", true)
       if hovered then
         draw_box(ass, bounds.x, bounds.y, bounds.x2, bounds.y2,
-          bounds.h / 2, "#E2E2E6", "E5", true)
+          bounds.h / 2, foreground, "E5", true)
       end
       local content_scale = math.min(1, bounds.h / math.max(dp(52), 1))
       local label_size, icon_size = 22 * content_scale, 24 * content_scale
@@ -363,10 +384,10 @@ function empty_state.new(services)
       local icon_x = bounds.x + (bounds.w - content_width) / 2 +
         dp(icon_size) / 2
       draw_icon(ass, icon_x, bounds.y + bounds.h / 2,
-        self.icon, "#E2E2E6", icon_size, "00", true)
+        self.icon, foreground, icon_size, "00", true)
       draw_text(ass, icon_x + dp(icon_size) / 2 + content_gap,
         bounds.y + bounds.h / 2, self.label, label_size,
-        "#E2E2E6", "00", default_text_font, 4, false, true)
+        foreground, "00", default_text_font, 4, false, true)
     end
 
     return node
@@ -401,7 +422,7 @@ function empty_state.new(services)
       local hovered = self.interactive and ui.mouse_in(bounds)
       draw_text(ass, bounds.x + bounds.w / 2, bounds.y + bounds.h / 2,
         self.label, 30 * (bounds.h / math.max(dp(44), 1)),
-        hovered and "#FFFFFF" or "#CAC4D0", alpha(node.opacity or 1),
+        foreground_color(), alpha((node.opacity or 1) * (hovered and 1 or 0.78)),
         default_text_font, 5, 200, true)
     end
 
@@ -439,13 +460,14 @@ function empty_state.new(services)
       local origin_x = bounds.x + (bounds.w - source_width * scale) / 2
       local origin_y = bounds.y + (bounds.h - source_height * scale) / 2
       local hovered = self.interactive and ui.mouse_in(bounds)
+      local color = ass_color(foreground_color())
 
       ass:new_event()
       ass:pos(origin_x, origin_y)
       ass:an(7)
       ass:append(string.format(
         "{\\1c&H%s&\\1a&H%s&\\bord0\\shad0}",
-        hovered and "FFFFFF" or "D0C4CA", alpha(self.opacity or 1)))
+        color, alpha((self.opacity or 1) * (hovered and 1 or 0.78))))
       ass:draw_start()
 
       local function point1(x, y)
@@ -559,7 +581,7 @@ function empty_state.new(services)
   function node:draw(ass, bounds)
     if self.visible and ui.is_render_pass("base") then
       draw_box(ass, bounds.x, bounds.y, bounds.x2, bounds.y2,
-        0, background_color, "00", true)
+        0, background_color(), "00", true)
     end
     ui.draw_node(self.marquee_game, ass, bounds)
     local layout_scale = math.min(1,
@@ -607,20 +629,21 @@ function empty_state.new(services)
       draw_brand_logo(ass,
         brand_logo_bounds.x + brand_logo_bounds.w / 2,
         brand_logo_bounds.y + brand_logo_bounds.h / 2,
-        logo_size, content_alpha, true)
+        logo_size, content_alpha, true, "#FFFFFF", opts.accent_color)
     end
     ui.draw_node(self.brand_logo, ass, brand_logo_bounds)
 
     if self.visible and ui.is_render_pass("interaction") then
+      local foreground = foreground_color()
       local text_x = lockup_x + logo_size + logo_gap
       draw_text(ass, text_x,
         top + logo_size / 2 - dp(30) * layout_scale,
-        "mpv", mpv_size, "#FFFFFF", content_alpha,
+        "mpv", mpv_size, foreground, content_alpha,
         default_text_font, 4, false, true, nil,
         {weight = 200, x_scale = mpv_x_scale})
       draw_text(ass, text_x,
         top + logo_size / 2 + dp(30) * layout_scale,
-        title, title_size, "#ffffff", alpha(self.opacity * 0.66),
+        title, title_size, foreground, alpha(self.opacity * 0.66),
         default_text_font, 4, false, true)
     end
 
@@ -662,10 +685,11 @@ function empty_state.new(services)
     end
 
     if not self.visible or not ui.is_render_pass("interaction") then return end
-    draw_text(ass, hint_x, hint_y, hint, hint_size, "#CAC4D0",
+    local foreground = foreground_color()
+    draw_text(ass, hint_x, hint_y, hint, hint_size, foreground,
       content_alpha, default_text_font, 4, false, true)
     draw_icon(ass, hint_x + hint_width + dp(14) * layout_scale, hint_y,
-      "move_to_inbox", "#CAC4D0", 24 * layout_scale, content_alpha, true)
+      "move_to_inbox", foreground, 24 * layout_scale, content_alpha, true)
   end
 
   return node

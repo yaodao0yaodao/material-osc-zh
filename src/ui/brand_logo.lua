@@ -16,7 +16,7 @@ function brand_logo.new(args)
   end
 
   function service:draw(ass, center_x, center_y, requested_size, alpha,
-      ignore_controller_fade)
+      ignore_controller_fade, color_override, dark_color_override)
     local size = requested_size or 128
     local scale = size / 128
     local origin_x, origin_y = center_x - size / 2, center_y - size / 2
@@ -40,7 +40,7 @@ function brand_logo.new(args)
         point(x3), point(y3))
     end
 
-    begin_shape("#0A0C15")
+    begin_shape(dark_color_override or "#0A0C15")
     move(72.124, 19.208); line(79.373, 17.085)
     curve(99.146, 11.294, 117.504, 29.652, 111.713, 49.425)
     line(109.590, 56.674)
@@ -63,12 +63,13 @@ function brand_logo.new(args)
       center_x = center_x,
       center_y = center_y,
       size = size,
-      color = args.ass_color(args.color and args.color() or "#42B6E9"),
+      color = args.ass_color(color_override or
+        (args.color and args.color() or "#42B6E9")),
       alpha = rendered_alpha,
       frame = animation:frame()
     })
 
-    begin_shape("#0A0C15")
+    begin_shape(dark_color_override or "#0A0C15")
     move(64.797499, 96.400230); line(64.797499, 96.400230)
     curve(46.903847, 96.400230, 32.397768, 81.894151,
       32.397768, 64.000500)
@@ -119,7 +120,7 @@ function brand_logo.new(args)
     transformed_curve(55.376, 43.231, 54.800, 43.088, 54.239, 43.088)
     ass:draw_stop()
 
-    begin_shape("#0A0C15")
+    begin_shape(dark_color_override or "#0A0C15")
     transformed_move(58.861, 54.481)
     transformed_line(67.105, 59.241)
     transformed_line(75.350, 64.000)
