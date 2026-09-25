@@ -84,6 +84,11 @@ through mpv is remembered in
 is restored, and when mpv exits the brightness from before that session is
 restored.
 
+The complete Linux configuration uses `sub-auto=fuzzy` so external subtitles
+with language suffixes such as `.scjp.ass`, `.JPSC.ass`, and `.zh-CN.srt` are
+loaded alongside the matching video. The default “Simplified/简” title
+preference recognizes SCJP and JPSC as Simplified Chinese.
+
 </details>
 
 <details>

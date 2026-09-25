@@ -19,6 +19,17 @@ end
 local function matches_title(title, keyword)
   title, keyword = lower(title), lower(keyword)
   if keyword == "" then return false end
+
+  -- Common anime-release filename suffixes do not carry language metadata.
+  -- Treat SCJP/JPSC as Simplified Chinese when the user's existing preference
+  -- asks for “Simplified” or “简”, without making TCJP/JPTC match as well.
+  if keyword == "simplified" or keyword == "简" then
+    return title:find("%f[%w]scjp%f[%W]") ~= nil or
+      title:find("%f[%w]jpsc%f[%W]") ~= nil or
+      title:find("%f[%w]chs%f[%W]") ~= nil or
+      title:find("%f[%w]zh%-hans%f[%W]") ~= nil or
+      title:find("%f[%w]zh_cn%f[%W]") ~= nil
+  end
   if not is_short_ascii_code(keyword) then
     return title:find(keyword, 1, true) ~= nil
   end
